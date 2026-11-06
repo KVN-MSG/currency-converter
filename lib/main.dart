@@ -1,52 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
-/// I list the currencies the user can choose from.
-const List<String> currencies = ['USD', 'GBP', 'EUR', 'JPY', 'NGN'];
-
-/// I use this fixed, hard-coded exchange rate table instead of a live API.
-///
-/// I look up a rate with exchangeRates[from][to]. It tells me how much of the
-/// `to` currency I get for 1 unit of the `from` currency. The exchange rates 
-/// I've set are illustrative only, rounded for simplicity, loosely based
-/// on 1 USD = 0.79 GBP, 0.92 EUR, 150 JPY and 1500 NGN. I set GBP -> USD to 
-/// 1.27 so that the example in the brief (100 GBP = 127.00 USD) stays true.
-const Map<String, Map<String, double>> exchangeRates = {
-  'USD': {
-    'USD': 1.0,
-    'GBP': 0.79,
-    'EUR': 0.92,
-    'JPY': 150.0,
-    'NGN': 1500.0,
-  },
-  'GBP': {
-    'USD': 1.27,
-    'GBP': 1.0,
-    'EUR': 1.164557,
-    'JPY': 189.873418,
-    'NGN': 1898.734177,
-  },
-  'EUR': {
-    'USD': 1.086957,
-    'GBP': 0.858696,
-    'EUR': 1.0,
-    'JPY': 163.043478,
-    'NGN': 1630.434783,
-  },
-  'JPY': {
-    'USD': 0.006667,
-    'GBP': 0.005267,
-    'EUR': 0.006133,
-    'JPY': 1.0,
-    'NGN': 10.0,
-  },
-  'NGN': {
-    'USD': 0.000667,
-    'GBP': 0.000527,
-    'EUR': 0.000613,
-    'JPY': 0.1,
-    'NGN': 1.0,
-  },
-};
+import 'converter_logic.dart';
+import 'exchange_rates.dart';
 
 void main() {
   runApp(const MyApp());
@@ -74,7 +30,8 @@ class CurrencyConverter extends StatefulWidget {
 }
 
 class _CurrencyConverterState extends State<CurrencyConverter> {
-  // I store the currencies currently selected in the two drop-downs.
+  // I keep the values the user is currently working with here.
+  String _amountText = '';
   String _fromCurrency = 'USD';
   String _toCurrency = 'GBP';
 
@@ -120,6 +77,16 @@ class _CurrencyConverterState extends State<CurrencyConverter> {
       fontWeight: FontWeight.bold,
     );
 
+    // I recalculate on every rebuild, so the result is always live.
+    final amount = ConverterLogic.parseAmount(_amountText);
+    final hasError = _amountText.isNotEmpty && amount == null;
+    final rate = ConverterLogic.getRate(_fromCurrency, _toCurrency);
+    final converted = ConverterLogic.convert(
+      amount ?? 0,
+      _fromCurrency,
+      _toCurrency,
+    );
+
     return Scaffold(
       appBar: AppBar(title: const Text('Currency Converter')),
       body: Column(
@@ -135,11 +102,15 @@ class _CurrencyConverterState extends State<CurrencyConverter> {
               children: [
                 Text('Converted Amount', style: style),
                 Text(
-                  '0.00',
+                  ConverterLogic.formatAmount(converted),
                   style: style.copyWith(
                     color: theme.colorScheme.onPrimary,
                     fontSize: theme.textTheme.displaySmall?.fontSize,
                   ),
+                ),
+                Text(
+                  '1 $_fromCurrency = ${ConverterLogic.formatRate(rate)} $_toCurrency',
+                  style: style,
                 ),
               ],
             ),
@@ -155,13 +126,24 @@ class _CurrencyConverterState extends State<CurrencyConverter> {
               child: Column(
                 children: [
                   TextField(
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      border: const OutlineInputBorder(),
                       labelText: 'Enter Amount',
+                      errorText: hasError ? 'Enter a valid number' : null,
                     ),
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    // I only allow digits and one decimal point, and I limit the length
+                    // so huge numbers cannot break my layout.
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                      LengthLimitingTextInputFormatter(12),
+                    ],
                     onChanged: (String value) {
-                      print('Value: $value');
+                      setState(() {
+                        _amountText = value;
+                      });
                     },
                   ),
                   const SizedBox(height: 12),
